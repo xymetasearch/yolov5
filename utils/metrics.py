@@ -14,8 +14,10 @@ import torch
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
-    w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
-    return (x[:, :4] * w).sum(1)
+    # w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
+    w = [0.0, 0.0, 0.0, 0.0, 1.0] # weights for [P, R, mAP@0.5, mAP@0.5:0.95, F2@0.3:0.8]
+    #return (x[:, :4] * w).sum(1)
+    return (x[:, :5] * w).sum(1)
 
 
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=(), eps=1e-16):
@@ -70,20 +72,22 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
                     py.append(np.interp(px, mrec, mpre))  # precision at mAP@0.5
 
     # Compute F1 (harmonic mean of precision and recall)
-    f1 = 2 * p * r / (p + r + eps)
+    # change f1 score to f2 score:In order to visualize and log F2 score during validation of yolov5 
+    # f1 = 2 * p * r / (p + r + eps)
+    f2 = 5 * p * r / (4 * p + r + 1e-16)
     names = [v for k, v in names.items() if k in unique_classes]  # list: only classes that have data
     names = {i: v for i, v in enumerate(names)}  # to dict
     if plot:
         plot_pr_curve(px, py, ap, Path(save_dir) / 'PR_curve.png', names)
-        plot_mc_curve(px, f1, Path(save_dir) / 'F1_curve.png', names, ylabel='F1')
+        plot_mc_curve(px, f2, Path(save_dir) / 'F2_curve.png', names, ylabel='F2')
         plot_mc_curve(px, p, Path(save_dir) / 'P_curve.png', names, ylabel='Precision')
         plot_mc_curve(px, r, Path(save_dir) / 'R_curve.png', names, ylabel='Recall')
 
-    i = f1.mean(0).argmax()  # max F1 index
-    p, r, f1 = p[:, i], r[:, i], f1[:, i]
+    i = f2.mean(0).argmax()  # max F2 index
+    p, r, f2 = p[:, i], r[:, i], f2[:, i]
     tp = (r * nt).round()  # true positives
     fp = (tp / (p + eps) - tp).round()  # false positives
-    return tp, fp, p, r, f1, ap, unique_classes.astype('int32')
+    return tp, fp, p, r, f2, ap, unique_classes.astype('int32')
 
 
 def compute_ap(recall, precision):
@@ -238,7 +242,6 @@ def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, eps=
         c_area = cw * ch + eps  # convex area
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou  # IoU
-
 
 def box_iou(box1, box2):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
